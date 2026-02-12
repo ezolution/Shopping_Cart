@@ -108,19 +108,18 @@ function parsePrice(doc) {
 }
 
 function parseStockStatus(doc) {
-  // JSON-LD availability
-  const jsonLd = doc.querySelectorAll('script[type="application/ld+json"]');
-  for (const script of jsonLd) {
-    try {
-      const json = JSON.parse(script.textContent ?? '');
-      const avail = json?.offers?.availability ?? json?.offers?.[0]?.availability ?? '';
-      if (avail.includes('InStock')) return 'in_stock';
-      if (avail.includes('OutOfStock')) return 'out_of_stock';
-      if (avail.includes('LimitedAvailability')) return 'limited';
-    } catch { /* continue */ }
-  }
+  // Check for "In Store Only" FIRST — means not available online
+  const pageText = doc.body?.innerText?.toLowerCase() ?? '';
+  const isInStoreOnly =
+    pageText.includes('in store only') ||
+    pageText.includes('in-store only') ||
+    pageText.includes('available for in-store purchase only') ||
+    pageText.includes('not available for delivery') ||
+    !!doc.querySelector('[data-testid="in-store-only"], [class*="inStoreOnly"], [class*="in-store-only"]');
 
-  // DOM-based
+  if (isInStoreOnly) return 'out_of_stock';
+
+  // Check for an Add to Cart button (only present for online-purchasable items)
   const addBtn =
     doc.querySelector('[data-testid="add-to-cart-button"]') ??
     doc.querySelector('button[class*="addToCart"]') ??
@@ -132,8 +131,21 @@ function parseStockStatus(doc) {
     const text = (addBtn.textContent ?? '').toLowerCase();
     if (text.includes('out of stock') || text.includes('unavailable')) return 'out_of_stock';
     if (text.includes('add to')) return 'in_stock';
+  } else {
+    // No Add to Cart button — likely not available online
+    // Only trust JSON-LD for OutOfStock, not InStock (which may mean in-store)
+    const jsonLd = doc.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of jsonLd) {
+      try {
+        const json = JSON.parse(script.textContent ?? '');
+        const avail = json?.offers?.availability ?? json?.offers?.[0]?.availability ?? '';
+        if (avail.includes('OutOfStock')) return 'out_of_stock';
+      } catch { /* continue */ }
+    }
+    return 'out_of_stock'; // No add-to-cart button = not purchasable online
   }
 
+  // Explicit OOS markers override everything
   const oos = doc.querySelector(
     '[data-testid="out-of-stock"], .out-of-stock-message, .oos-message'
   );

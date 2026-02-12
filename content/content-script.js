@@ -61,30 +61,49 @@
       }
     }
 
-    // Stock status — JSON-LD
-    for (const script of jsonLd) {
-      try {
-        const json = JSON.parse(script.textContent ?? '');
-        const avail = json?.offers?.availability ?? json?.offers?.[0]?.availability ?? '';
-        if (avail.includes('InStock')) { data.stockStatus = 'in_stock'; break; }
-        if (avail.includes('OutOfStock')) { data.stockStatus = 'out_of_stock'; break; }
-        if (avail.includes('LimitedAvailability')) { data.stockStatus = 'limited'; break; }
-      } catch { /* skip */ }
-    }
-    if (data.stockStatus === 'unknown') {
+    // Stock status — check DOM for online availability FIRST
+    // "In Store Only" means NOT available online, which is what we care about
+    const pageText = doc.body?.innerText?.toLowerCase() ?? '';
+    const isInStoreOnly =
+      pageText.includes('in store only') ||
+      pageText.includes('in-store only') ||
+      pageText.includes('available for in-store purchase only') ||
+      pageText.includes('not available for delivery') ||
+      !!doc.querySelector('[data-testid="in-store-only"], [class*="inStoreOnly"], [class*="in-store-only"]');
+
+    if (isInStoreOnly) {
+      data.stockStatus = 'out_of_stock';
+    } else {
+      // Check for an Add to Cart button (only present for online-purchasable items)
       const addBtn =
         doc.querySelector('[data-testid="add-to-cart-button"]') ??
         doc.querySelector('button[class*="addToCart"]') ??
         doc.querySelector('button[aria-label*="Add to"]') ??
         doc.querySelector('.add-to-cart-button');
+
       if (addBtn) {
-        if (addBtn.disabled) data.stockStatus = 'out_of_stock';
-        else {
+        if (addBtn.disabled) {
+          data.stockStatus = 'out_of_stock';
+        } else {
           const txt = (addBtn.textContent ?? '').toLowerCase();
           if (txt.includes('out of stock') || txt.includes('unavailable')) data.stockStatus = 'out_of_stock';
           else if (txt.includes('add to')) data.stockStatus = 'in_stock';
         }
+      } else {
+        // No Add to Cart button at all — likely not available online
+        // Fall back to JSON-LD but only trust OutOfStock, not InStock
+        let jsonStatus = 'unknown';
+        for (const script of jsonLd) {
+          try {
+            const json = JSON.parse(script.textContent ?? '');
+            const avail = json?.offers?.availability ?? json?.offers?.[0]?.availability ?? '';
+            if (avail.includes('OutOfStock')) { jsonStatus = 'out_of_stock'; break; }
+          } catch { /* skip */ }
+        }
+        data.stockStatus = jsonStatus === 'unknown' ? 'out_of_stock' : jsonStatus;
       }
+
+      // Explicit OOS markers override everything
       const oos = doc.querySelector('[data-testid="out-of-stock"], .out-of-stock-message, .oos-message');
       if (oos) data.stockStatus = 'out_of_stock';
     }

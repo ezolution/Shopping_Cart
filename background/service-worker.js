@@ -48,67 +48,101 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 // ---- Tab-based product data fetching ----
-// We open a real browser tab so the content script can parse
+// We use a real browser tab so the content script can parse
 // the live DOM. This bypasses Cloudflare / bot protection.
+// A single "monitor tab" is reused across checks to avoid
+// visible tab open/close flashing.
+
+let monitorTabId = null;
 
 /**
- * Fetch product data by opening a background tab and asking
- * the content script to parse the page.
- * @param {string} url - The Kmart product URL
- * @returns {Promise<object>} Parsed product data
+ * Get or create a reusable background monitor tab.
+ * Navigates it to the given URL and waits for load.
  */
-async function fetchProductViaTab(url) {
-  let tab = null;
-  try {
-    // Open the page in a background tab
-    tab = await chrome.tabs.create({ url, active: false });
-    await waitForTabLoad(tab.id);
-
-    // Extra wait for content script init + lazy-loaded content
-    await sleep(2500);
-
-    // Ask the content script to parse the live DOM
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      type: 'PARSE_PRODUCT_PAGE',
-    });
-
-    if (response?.success && response.data) {
-      return response.data;
+async function getMonitorTab(url) {
+  // Check if our monitor tab still exists
+  if (monitorTabId) {
+    try {
+      const tab = await chrome.tabs.get(monitorTabId);
+      if (tab) {
+        // Tab exists — navigate it to the new URL
+        await chrome.tabs.update(monitorTabId, { url, active: false });
+        await waitForTabLoad(monitorTabId);
+        await sleep(2000);
+        return monitorTabId;
+      }
+    } catch {
+      // Tab was closed by user, reset
+      monitorTabId = null;
     }
+  }
 
-    throw new Error(response?.error || 'Content script returned no data.');
-  } finally {
-    // Always close the tab when done
-    if (tab?.id) {
-      try { await chrome.tabs.remove(tab.id); } catch { /* already closed */ }
-    }
+  // Create a new monitor tab (not active, won't steal focus)
+  const tab = await chrome.tabs.create({ url, active: false });
+  monitorTabId = tab.id;
+  await waitForTabLoad(monitorTabId);
+  await sleep(2000);
+  return monitorTabId;
+}
+
+/**
+ * Clean up the monitor tab (call when all checks are done).
+ */
+async function closeMonitorTab() {
+  if (monitorTabId) {
+    try { await chrome.tabs.remove(monitorTabId); } catch { /* already gone */ }
+    monitorTabId = null;
   }
 }
 
 /**
+ * Fetch product data by navigating the monitor tab and asking
+ * the content script to parse the page.
+ */
+async function fetchProductViaTab(url) {
+  const tabId = await getMonitorTab(url);
+
+  const response = await chrome.tabs.sendMessage(tabId, {
+    type: 'PARSE_PRODUCT_PAGE',
+  });
+
+  if (response?.success && response.data) {
+    return response.data;
+  }
+
+  throw new Error(response?.error || 'Content script returned no data.');
+}
+
+/**
  * Try to get product data from an already-open tab first,
- * falling back to opening a new background tab.
+ * falling back to the reusable monitor tab.
  */
 async function fetchProductData(url) {
   // Check if user already has this page open
-  const existing = await chrome.tabs.query({
-    url: url.replace(/\/$/, '') + '*',
-  });
+  try {
+    const existing = await chrome.tabs.query({
+      url: url.replace(/\/$/, '') + '*',
+    });
 
-  if (existing.length > 0 && existing[0].id) {
-    try {
-      const response = await chrome.tabs.sendMessage(existing[0].id, {
-        type: 'PARSE_PRODUCT_PAGE',
-      });
-      if (response?.success && response.data) {
-        return response.data;
+    for (const tab of existing) {
+      // Skip our own monitor tab
+      if (tab.id === monitorTabId) continue;
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: 'PARSE_PRODUCT_PAGE',
+        });
+        if (response?.success && response.data) {
+          return response.data;
+        }
+      } catch {
+        // Content script not ready on this tab
       }
-    } catch {
-      // Content script may not be ready, fall through
     }
+  } catch {
+    // Query failed, fall through
   }
 
-  // No existing tab — open one in the background
+  // No existing tab with data — use the monitor tab
   return await fetchProductViaTab(url);
 }
 
@@ -180,6 +214,8 @@ async function monitorTick() {
       await sleep(jitter(2000, settings.jitterPercent));
     }
 
+    // Close the monitor tab after all checks are done
+    await closeMonitorTab();
     await refreshBadge();
   } finally {
     isChecking = false;
