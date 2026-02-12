@@ -12,12 +12,18 @@
 
 // ---- Browser notifications ----
 
+// Tiny 16x16 red/white KSM logo as a data URI (required by chrome.notifications)
+const FALLBACK_ICON = 'data:image/png;base64,' +
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAX0lEQVQ4y2P4z8BQ' +
+  'z0BPAMZAB8YMDAz/GRgYGBj+MzAwAAFIDBYGqWFkYPj/n4GBgYGBof4/AwMDAwN' +
+  'DPQMDQz0DA0M9AwOIxAcYGBj+MzAw/GdgYGA4AMbAAADqXBkR6mzJEAAAAABJRU5ErkJggg==';
+
 export async function showNotification(title, message, imageUrl, onClick) {
   const notifId = `ksm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   const options = {
-    type: imageUrl ? 'image' : 'basic',
-    iconUrl: '',
+    type: 'basic',
+    iconUrl: FALLBACK_ICON,
     title,
     message,
     priority: 2,
@@ -25,10 +31,12 @@ export async function showNotification(title, message, imageUrl, onClick) {
     silent: false,
   };
 
-  if (imageUrl) options.imageUrl = imageUrl;
-
   return new Promise(resolve => {
     chrome.notifications.create(notifId, options, id => {
+      // Check for runtime error (e.g. invalid image) and ignore it
+      if (chrome.runtime.lastError) {
+        console.warn('[KSM Notification] Warning:', chrome.runtime.lastError.message);
+      }
       if (onClick) {
         const handler = clickedId => {
           if (clickedId === id) {
@@ -47,7 +55,7 @@ export async function notifyInStock(product) {
   await showNotification(
     'Back in Stock!',
     `${product.name} is now available at $${product.currentPrice.toFixed(2)}`,
-    product.imageUrl || undefined,
+    null,
     () => chrome.tabs.create({ url: product.url, active: true })
   );
 }
@@ -57,7 +65,7 @@ export async function notifyPriceDrop(product, oldPrice, newPrice) {
   await showNotification(
     'Price Drop!',
     `${product.name}: $${oldPrice.toFixed(2)} → $${newPrice.toFixed(2)} (−${dropPct}%)`,
-    product.imageUrl || undefined,
+    null,
     () => chrome.tabs.create({ url: product.url, active: true })
   );
 }
