@@ -159,10 +159,10 @@ async function ensureAlarmRunning() {
     return;
   }
 
-  const periodMinutes = Math.max(settings.checkIntervalSeconds / 60, 10 / 60);
+  const periodInMinutes = Math.max(settings.checkIntervalSeconds / 60, 10 / 60);
   const existing = await chrome.alarms.get(ALARM_NAME);
 
-  if (!existing || Math.abs(existing.periodInMinutes - periodMinutes) > 0.01) {
+  if (!existing || Math.abs(existing.periodInMinutes - periodInMinutes) > 0.01) {
     await chrome.alarms.create(ALARM_NAME, {
       delayInMinutes: 0.05,
       periodInMinutes,
