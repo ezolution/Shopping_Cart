@@ -1,9 +1,16 @@
 // ============================================================
-// Background Service Worker
+// Kmart Stock Monitor — Background Service Worker
 // Core monitoring loop, message routing, alarm management
 //
 // ALL product data is fetched via real browser tabs + content
 // script parsing (not fetch()) to bypass Cloudflare/bot blocks.
+//
+// Copyright (c) 2026 Ezolution. All rights reserved.
+// https://github.com/ezolution
+//
+// This source code is proprietary and confidential.
+// Unauthorized copying, modification, distribution, or use
+// of this software, via any medium, is strictly prohibited.
 // ============================================================
 
 import {

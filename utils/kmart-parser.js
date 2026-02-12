@@ -1,5 +1,13 @@
 // ============================================================
-// Kmart Parser — Scrapes product data from Kmart Australia pages
+// Kmart Stock Monitor — Kmart Product Page Parser
+// Scrapes product data from Kmart Australia pages
+//
+// Copyright (c) 2026 Ezolution. All rights reserved.
+// https://github.com/ezolution
+//
+// This source code is proprietary and confidential.
+// Unauthorized copying, modification, distribution, or use
+// of this software, via any medium, is strictly prohibited.
 // ============================================================
 
 /** Validate that a URL is a Kmart Australia product page */

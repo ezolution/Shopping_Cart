@@ -1,6 +1,13 @@
 // ============================================================
-// Storage Utility — Chrome Storage API wrapper
-// Products, settings, logs, profiles, export/import
+// Kmart Stock Monitor — Storage Utility
+// Chrome Storage API wrapper for products, settings, logs, profiles
+//
+// Copyright (c) 2026 Ezolution. All rights reserved.
+// https://github.com/ezolution
+//
+// This source code is proprietary and confidential.
+// Unauthorized copying, modification, distribution, or use
+// of this software, via any medium, is strictly prohibited.
 // ============================================================
 
 import { DEFAULT_SETTINGS } from './constants.js';

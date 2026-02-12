@@ -1,8 +1,15 @@
 // ============================================================
-// Content Script — Runs on Kmart product pages
-// SELF-CONTAINED: No ES module imports (content scripts can't use them)
+// Kmart Stock Monitor — Content Script
+// Runs on Kmart product pages (self-contained, no ES imports)
 // Handles: page parsing, add-to-cart, variant selection,
 //          checkout autofill, MutationObserver for live changes
+//
+// Copyright (c) 2026 Ezolution. All rights reserved.
+// https://github.com/ezolution
+//
+// This source code is proprietary and confidential.
+// Unauthorized copying, modification, distribution, or use
+// of this software, via any medium, is strictly prohibited.
 // ============================================================
 
 (function () {

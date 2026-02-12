@@ -1,5 +1,12 @@
 // ============================================================
-// Shared constants and defaults
+// Kmart Stock Monitor — Shared Constants & Defaults
+//
+// Copyright (c) 2026 Ezolution. All rights reserved.
+// https://github.com/ezolution
+//
+// This source code is proprietary and confidential.
+// Unauthorized copying, modification, distribution, or use
+// of this software, via any medium, is strictly prohibited.
 // ============================================================
 
 export const DEFAULT_SETTINGS = {

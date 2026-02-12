@@ -1,6 +1,13 @@
 // ============================================================
-// Anti-Detection / Stealth Utilities
+// Kmart Stock Monitor — Anti-Detection / Stealth Utilities
 // Jitter, backoff, UA rotation, rate limiting, detection checks
+//
+// Copyright (c) 2026 Ezolution. All rights reserved.
+// https://github.com/ezolution
+//
+// This source code is proprietary and confidential.
+// Unauthorized copying, modification, distribution, or use
+// of this software, via any medium, is strictly prohibited.
 // ============================================================
 
 // ---- Timing jitter ----

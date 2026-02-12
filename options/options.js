@@ -1,5 +1,12 @@
 // ============================================================
-// Options Page Script — Settings, profiles, data management
+// Kmart Stock Monitor — Options / Settings Script
+//
+// Copyright (c) 2026 Ezolution. All rights reserved.
+// https://github.com/ezolution
+//
+// This source code is proprietary and confidential.
+// Unauthorized copying, modification, distribution, or use
+// of this software, via any medium, is strictly prohibited.
 // ============================================================
 
 // ---- Messaging ----

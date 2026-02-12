@@ -1,5 +1,8 @@
 # Kmart Stock Monitor — Chrome Extension
 
+> **Copyright (c) 2026 [Ezolution](https://github.com/ezolution). All rights reserved.**
+> This software is proprietary. See [LICENSE](LICENSE) for details.
+
 A Chrome extension for monitoring Kmart Australia product availability with auto add-to-cart and checkout assistance.
 
 **Zero dependencies. No build step. Pure vanilla JavaScript.**
@@ -195,4 +198,12 @@ Kmart Checkout/
 
 ## License
 
-For personal/educational use. Use responsibly and in accordance with Kmart's Terms of Service.
+**Copyright (c) 2026 [Ezolution](https://github.com/ezolution). All rights reserved.**
+
+This software is proprietary and confidential. Unauthorized copying, modification, distribution, or use of this software, via any medium, is strictly prohibited without the prior written permission of Ezolution.
+
+See the full [LICENSE](LICENSE) file for details.
+
+---
+
+*Kmart Stock Monitor is developed and maintained by [Ezolution](https://github.com/ezolution).*

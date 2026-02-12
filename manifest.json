@@ -2,7 +2,9 @@
   "manifest_version": 3,
   "name": "Kmart Stock Monitor",
   "version": "1.0.0",
-  "description": "Monitor Kmart product availability with auto add-to-cart and checkout assistance.",
+  "description": "Monitor Kmart product availability with auto add-to-cart and checkout assistance. Copyright (c) 2026 Ezolution.",
+  "author": "Ezolution",
+  "homepage_url": "https://github.com/ezolution/Shopping_Cart",
   "permissions": [
     "storage",
     "alarms",
