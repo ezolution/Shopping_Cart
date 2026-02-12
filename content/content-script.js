@@ -24,6 +24,25 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  /** Check if extension context is still valid (survives reload). */
+  function isContextValid() {
+    try {
+      return !!chrome.runtime?.id;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Safe wrapper for chrome.runtime.sendMessage — silently no-ops after reload. */
+  function safeSendMessage(msg) {
+    if (!isContextValid()) return;
+    try {
+      chrome.runtime.sendMessage(msg);
+    } catch {
+      // Extension was reloaded — this content script is orphaned
+    }
+  }
+
   // ---- Kmart parser (inlined) ----
 
   function parseProductPage(doc) {
@@ -182,14 +201,16 @@
   // ---- Parse & report to background ----
 
   async function parseAndReport() {
+    if (!isContextValid()) return;
     await humanDelay(500, 1500);
     try {
       currentProductData = parseProductPage(document);
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: 'PARSE_PRODUCT_PAGE',
         payload: currentProductData,
       });
     } catch (err) {
+      if (!isContextValid()) return; // Silently ignore after reload
       console.error('[KSM Content] Parse failed:', err);
     }
   }
@@ -498,7 +519,7 @@
 
         switch (action) {
           case 'monitor':
-            chrome.runtime.sendMessage({
+            safeSendMessage({
               type: 'ADD_PRODUCT',
               payload: { url: window.location.href },
             });
