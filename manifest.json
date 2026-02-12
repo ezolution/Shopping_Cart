@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Kmart Stock Monitor",
+  "version": "1.0.0",
+  "description": "Monitor Kmart product availability with auto add-to-cart and checkout assistance.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.kmart.com.au/*",
+    "https://kmart.com.au/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.kmart.com.au/*",
+        "https://kmart.com.au/*"
+      ],
+      "js": ["content/content-script.js"],
+      "css": ["content/content-style.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html"
+  },
+  "options_page": "options/options.html"
+}

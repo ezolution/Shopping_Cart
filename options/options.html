@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kmart Stock Monitor — Settings</title>
+  <style>
+    /* ---- Reset & Base ---- */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f0f1a;
+      --bg-card: #1a1a2e;
+      --bg-input: #252540;
+      --bg-hover: #2d2d4a;
+      --text: #e8e8f0;
+      --text-dim: #9090aa;
+      --text-muted: #5a5a78;
+      --accent: #e53935;
+      --accent-hover: #ef5350;
+      --green: #22c55e;
+      --border: #2a2a42;
+      --radius: 10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 32px;
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 13px;
+      margin-bottom: 28px;
+    }
+
+    /* ---- Sections ---- */
+    .section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ---- Form rows ---- */
+    .form-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+
+    .form-row + .form-row {
+      border-top: 1px solid rgba(42, 42, 66, 0.5);
+    }
+
+    .form-label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .form-label span:first-child {
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+    .form-label span:last-child {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ---- Inputs ---- */
+    input[type="number"],
+    input[type="text"],
+    input[type="url"],
+    input[type="email"],
+    input[type="tel"],
+    select {
+      width: 140px;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-input);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    input[type="number"] {
+      width: 90px;
+    }
+
+    /* ---- Toggle switch ---- */
+    .toggle {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      border-radius: 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: all 0.2s;
+    }
+
+    .toggle input:checked + .toggle-track {
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .toggle input:checked + .toggle-track::after {
+      transform: translateX(18px);
+      background: white;
+    }
+
+    /* ---- Range slider ---- */
+    input[type="range"] {
+      width: 120px;
+      accent-color: var(--accent);
+    }
+
+    /* ---- Profile form ---- */
+    .profile-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .profile-grid input,
+    .profile-grid select {
+      width: 100%;
+    }
+
+    .profile-grid .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .field-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---- Buttons ---- */
+    .btn {
+      height: 36px;
+      padding: 0 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.25);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    /* ---- Storage bar ---- */
+    .storage-bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--bg-input);
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .storage-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--green);
+      transition: width 0.3s;
+    }
+
+    .storage-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ---- Toast ---- */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      animation: fade-in 0.2s ease;
+      z-index: 100;
+    }
+
+    .toast.success {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .toast.error {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <h1>Settings</h1>
+  <p class="subtitle">Configure your Kmart Stock Monitor preferences</p>
+
+  <!-- Monitoring -->
+  <div class="section">
+    <div class="section-title">Monitoring</div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Check Interval (seconds)</span>
+        <span>How often to check each product</span>
+      </div>
+      <input type="number" id="checkInterval" min="10" max="600" step="5">
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Timing Jitter (%)</span>
+        <span>Random variance to avoid detection</span>
+      </div>
+      <input type="number" id="jitterPercent" min="0" max="50" step="1">
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Max Products</span>
+        <span>Maximum products to monitor simultaneously</span>
+      </div>
+      <input type="number" id="maxProducts" min="1" max="100" step="1">
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div class="section">
+    <div class="section-title">Notifications</div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Browser Notifications</span>
+        <span>Show desktop alerts for stock changes</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="notificationsEnabled">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Audio Alerts</span>
+        <span>Play a sound when products come in stock</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="audioAlertEnabled">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Audio Volume</span>
+      </div>
+      <input type="range" id="audioVolume" min="0" max="1" step="0.1">
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Price Drop Threshold (%)</span>
+        <span>Minimum drop percentage to trigger alert</span>
+      </div>
+      <input type="number" id="priceDropThreshold" min="1" max="90" step="1">
+    </div>
+  </div>
+
+  <!-- Automation -->
+  <div class="section">
+    <div class="section-title">Automation</div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Global Auto Add-to-Cart</span>
+        <span>Automatically add products when they come in stock</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="globalAutoAdd">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Auto Checkout</span>
+        <span>Navigate through checkout steps automatically</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoCheckout">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Checkout Confirmation Gates</span>
+        <span>Require manual confirmation at each checkout step</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="checkoutConfirmGates">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+  </div>
+
+  <!-- Webhook -->
+  <div class="section">
+    <div class="section-title">Webhook Notifications</div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Enable Webhook</span>
+        <span>Send alerts to Discord or Telegram</span>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="webhookEnabled">
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Webhook URL</span>
+      </div>
+      <input type="url" id="webhookUrl" placeholder="https://discord.com/api/webhooks/..." style="width: 280px">
+    </div>
+  </div>
+
+  <!-- Checkout Profile -->
+  <div class="section">
+    <div class="section-title">Checkout Profile</div>
+    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+      Saved details for quick checkout autofill
+    </p>
+    <div class="profile-grid">
+      <div class="field-group">
+        <label class="field-label">First Name</label>
+        <input type="text" id="prof-firstName">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Last Name</label>
+        <input type="text" id="prof-lastName">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Email</label>
+        <input type="email" id="prof-email">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Phone</label>
+        <input type="tel" id="prof-phone">
+      </div>
+      <div class="field-group full-width">
+        <label class="field-label">Address Line 1</label>
+        <input type="text" id="prof-address1">
+      </div>
+      <div class="field-group full-width">
+        <label class="field-label">Address Line 2</label>
+        <input type="text" id="prof-address2">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Suburb</label>
+        <input type="text" id="prof-suburb">
+      </div>
+      <div class="field-group">
+        <label class="field-label">State</label>
+        <select id="prof-state">
+          <option value="">Select...</option>
+          <option value="NSW">NSW</option>
+          <option value="VIC">VIC</option>
+          <option value="QLD">QLD</option>
+          <option value="SA">SA</option>
+          <option value="WA">WA</option>
+          <option value="TAS">TAS</option>
+          <option value="NT">NT</option>
+          <option value="ACT">ACT</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Postcode</label>
+        <input type="text" id="prof-postcode" maxlength="4">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-save-profile">Save Profile</button>
+    </div>
+  </div>
+
+  <!-- Data Management -->
+  <div class="section">
+    <div class="section-title">Data Management</div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Max History Per Product</span>
+        <span>Number of price/stock snapshots to keep</span>
+      </div>
+      <input type="number" id="maxHistory" min="10" max="2000" step="10">
+    </div>
+    <div class="form-row">
+      <div class="form-label">
+        <span>Storage Usage</span>
+      </div>
+      <div style="width: 200px;">
+        <div class="storage-bar">
+          <div class="storage-fill" id="storage-fill" style="width: 0%"></div>
+        </div>
+        <div class="storage-text" id="storage-text">Calculating...</div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btn-clear-logs">Clear Logs</button>
+      <button class="btn btn-danger" id="btn-reset">Reset All Data</button>
+    </div>
+  </div>
+
+  <!-- Save button -->
+  <div class="btn-row" style="margin-top: 8px; margin-bottom: 40px;">
+    <button class="btn btn-primary" id="btn-save" style="width: 100%; justify-content: center;">
+      Save Settings
+    </button>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
