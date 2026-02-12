@@ -92,7 +92,7 @@ function createProductCard(p) {
 
   card.innerHTML = `
     <div class="monitor-indicator ${monitorClass}"></div>
-    <img class="product-thumb" src="${esc(p.imageUrl || '')}" alt="" onerror="this.style.display='none'" loading="lazy">
+    <img class="product-thumb" src="${esc(p.imageUrl || '')}" alt="" loading="lazy">
     <div class="product-info">
       <div class="product-name" title="${esc(p.name)}">${esc(p.name)}</div>
       <div class="product-meta">
@@ -121,6 +121,14 @@ function createProductCard(p) {
       </button>
     </div>
   `;
+
+  // Hide broken images gracefully
+  const thumb = card.querySelector('.product-thumb');
+  if (thumb) {
+    thumb.addEventListener('error', () => { thumb.style.display = 'none'; });
+    // Also hide immediately if src is empty
+    if (!p.imageUrl) thumb.style.display = 'none';
+  }
 
   // Open product page
   card.querySelector('.product-name').addEventListener('click', () => {
