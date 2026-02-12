@@ -151,11 +151,14 @@ async function fetchProductData(url) {
 async function ensureAlarmRunning() {
   const settings = await getSettings();
   const products = await getProducts();
-  const hasActive = products.some(p => p.monitorState === 'active');
+  // Keep alarm running for both active AND error products (error keeps retrying)
+  const hasMonitoring = products.some(
+    p => p.monitorState === 'active' || p.monitorState === 'error'
+  );
 
-  if (!hasActive) {
+  if (!hasMonitoring) {
     await chrome.alarms.clear(ALARM_NAME);
-    console.log('[KSM] No active products — alarm cleared.');
+    console.log('[KSM] No active/error products — alarm cleared.');
     return;
   }
 
@@ -186,20 +189,28 @@ async function monitorTick() {
   try {
     const settings = await getSettings();
     const products = await getProducts();
-    const active = products.filter(p => p.monitorState === 'active');
 
-    if (active.length === 0) { isChecking = false; return; }
+    // Include both 'active' AND 'error' products — error products
+    // keep retrying on a slow cadence instead of stopping forever
+    const eligible = products.filter(
+      p => p.monitorState === 'active' || p.monitorState === 'error'
+    );
+
+    if (eligible.length === 0) { isChecking = false; return; }
 
     if (Math.random() < 0.1) rotateUserAgent();
 
-    for (const product of active) {
+    for (const product of eligible) {
       if (!RATE_LIMITER.canRequest()) {
         const wait = RATE_LIMITER.waitTime();
         await sleep(wait);
       }
 
+      // Backoff: products with errors wait longer between retries
+      // error state uses a minimum 5-minute floor so we're not hammering
       if (product.errorCount > 0) {
-        const delay = backoffDelay(product.errorCount);
+        const minDelay = product.monitorState === 'error' ? 5 * 60 * 1000 : 0;
+        const delay = Math.max(backoffDelay(product.errorCount), minDelay);
         const since = Date.now() - (product.lastChecked ?? 0);
         if (since < delay) continue;
       }
@@ -222,6 +233,39 @@ async function monitorTick() {
   }
 }
 
+// ---- Detect junk / 404 data ----
+
+/**
+ * Returns true if the parsed data looks like a valid Kmart product page
+ * (not a 404, error page, or unrelated content).
+ */
+function isValidProductData(data) {
+  if (!data || !data.name) return false;
+
+  const name = data.name.toLowerCase();
+
+  // Common 404 / error page titles
+  const junkNames = [
+    'page not found',
+    'not found',
+    '404',
+    'error',
+    'sorry',
+    'oops',
+    'something went wrong',
+    'access denied',
+    'just a moment',     // Cloudflare challenge
+    'unknown product',
+  ];
+
+  if (junkNames.some(j => name.includes(j))) return false;
+
+  // If name is very short or very generic, suspicious
+  if (data.name.trim().length < 3) return false;
+
+  return true;
+}
+
 // ---- Check a single product ----
 
 async function checkProduct(product, settings) {
@@ -229,6 +273,41 @@ async function checkProduct(product, settings) {
 
   try {
     const data = await fetchProductData(product.url);
+
+    // ---- Guard: detect 404 / junk pages ----
+    // If the page returned garbage data (product taken down, 404, etc.),
+    // treat it as a temporary error — don't overwrite stored product info.
+    if (!isValidProductData(data)) {
+      const errorMsg = `Page returned invalid data (possible 404 or taken down): "${data?.name || 'empty'}"`;
+      console.warn(`[KSM] ${product.name}: ${errorMsg}`);
+
+      await updateProduct(product.id, {
+        lastChecked: now,
+        errorCount: product.errorCount + 1,
+        lastError: errorMsg,
+        // Keep existing name, image, price, stockStatus untouched
+      });
+
+      await addLog({
+        timestamp: now, productId: product.id, event: 'error',
+        details: errorMsg,
+      });
+
+      // After 10 junk responses, notify user but DON'T stop monitoring
+      // (the page might come back). Just slow down via backoff.
+      if (product.errorCount + 1 === 10) {
+        if (settings.notificationsEnabled) {
+          await notifyError(product,
+            `Page may be taken down (${product.errorCount + 1} failed checks). ` +
+            `Still monitoring on a slow cadence — will notify if it comes back.`
+          );
+        }
+      }
+
+      return; // Don't update stock status or overwrite product data
+    }
+
+    // ---- Valid product data — proceed normally ----
 
     const oldStatus = product.stockStatus;
     const oldPrice = product.currentPrice;
@@ -247,16 +326,30 @@ async function checkProduct(product, settings) {
       history.length = settings.maxHistoryPerProduct;
     }
 
+    // Only update name/image if the new data looks real
+    // (don't overwrite "OP10 One Piece..." with "Page Not Found")
+    const safeName = (data.name && data.name.length > 3) ? data.name : product.name;
+    const safeImage = data.imageUrl || product.imageUrl;
+
     const updates = {
       currentPrice: newPrice,
       stockStatus: newStatus,
       lastChecked: now,
-      errorCount: 0,
+      errorCount: 0,           // Reset errors on valid data
       lastError: null,
       history,
-      name: data.name || product.name,
-      imageUrl: data.imageUrl || product.imageUrl,
+      name: safeName,
+      imageUrl: safeImage,
     };
+
+    // If product was in error state and we got valid data, restore to active
+    if (product.monitorState === 'error') {
+      updates.monitorState = 'active';
+      await addLog({
+        timestamp: now, productId: product.id, event: 'check',
+        details: `Product page recovered — monitoring resumed.`,
+      });
+    }
 
     // ---- OOS → In Stock ----
     if (newStatus === 'in_stock' && (oldStatus === 'out_of_stock' || oldStatus === 'unknown')) {
@@ -321,12 +414,14 @@ async function checkProduct(product, settings) {
     });
 
   } catch (err) {
+    // Total failure (tab crash, network down, content script error, etc.)
     const errorMsg = err?.message ?? String(err);
 
     await updateProduct(product.id, {
       lastChecked: now,
       errorCount: product.errorCount + 1,
       lastError: errorMsg,
+      // Don't change monitorState — keep trying via backoff
     });
 
     await addLog({
@@ -334,10 +429,14 @@ async function checkProduct(product, settings) {
       details: errorMsg,
     });
 
-    if (product.errorCount + 1 >= 5) {
+    // Notify at 5 errors, but keep monitoring (just with backoff)
+    if (product.errorCount + 1 === 5) {
       await updateProduct(product.id, { monitorState: 'error' });
       if (settings.notificationsEnabled) {
-        await notifyError(product, `Paused after ${product.errorCount + 1} errors: ${errorMsg}`);
+        await notifyError(product,
+          `Hitting errors (${product.errorCount + 1} so far): ${errorMsg}. ` +
+          `Still retrying on a slower cadence.`
+        );
       }
     }
   }
