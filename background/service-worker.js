@@ -533,11 +533,59 @@ async function handleMessage(msg, sender) {
         return { success: false, error: 'Invalid Kmart product URL.' };
       }
       try {
-        const data = await fetchProductData(url);
+        // Try to fetch live data from the page
+        let data = null;
+        let pageIsDown = false;
+
+        try {
+          data = await fetchProductData(url);
+        } catch {
+          // Tab failed entirely — page may not exist at all
+          pageIsDown = true;
+        }
+
+        // Check if the page returned junk (404, error page, taken down)
+        if (!pageIsDown && data && !isValidProductData(data)) {
+          pageIsDown = true;
+        }
+
+        // Extract a readable name from the URL slug as fallback
+        const fallbackName = nameFromUrl(url);
+
+        if (pageIsDown) {
+          // Page is down — still add it for monitoring, but mark
+          // as waiting for recovery so the user knows the situation
+          const product = {
+            id: crypto.randomUUID(),
+            url,
+            name: fallbackName,
+            imageUrl: '',
+            currentPrice: 0,
+            previousPrice: null,
+            stockStatus: 'out_of_stock',
+            monitorState: 'active',
+            lastChecked: Date.now(),
+            lastInStock: null,
+            addedAt: Date.now(),
+            errorCount: 1,
+            lastError: 'Product page is currently unavailable — monitoring for when it comes back.',
+            selectedVariants: [],
+            autoAddToCart: false,
+            maxQuantity: 1,
+            history: [],
+            tags: [],
+          };
+          await addProduct(product);
+          await ensureAlarmRunning();
+          await refreshBadge();
+          return { success: true, data: product };
+        }
+
+        // Page is live — use the real data
         const product = {
           id: crypto.randomUUID(),
           url,
-          name: data.name || 'Unknown Product',
+          name: (data.name && data.name.length > 3) ? data.name : fallbackName,
           imageUrl: data.imageUrl || '',
           currentPrice: data.price || 0,
           previousPrice: null,
@@ -564,7 +612,7 @@ async function handleMessage(msg, sender) {
         await refreshBadge();
         return { success: true, data: product };
       } catch (err) {
-        return { success: false, error: `Failed to fetch product: ${err.message}` };
+        return { success: false, error: `Failed to add product: ${err.message}` };
       }
     }
 
@@ -680,6 +728,37 @@ async function handleMessage(msg, sender) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Extract a human-readable product name from a Kmart URL slug.
+ * e.g. "/product/pokemon-trading-card-game-mega-evolution-43718702/"
+ *   → "Pokemon Trading Card Game Mega Evolution"
+ */
+function nameFromUrl(url) {
+  try {
+    const path = new URL(url).pathname;
+    // Match the slug between /product/ and the trailing ID/slash
+    const match = path.match(/\/product\/([^/]+)/);
+    if (!match) return 'Unknown Product';
+
+    let slug = match[1];
+    // Remove trailing numeric product ID (e.g. -43718702)
+    slug = slug.replace(/-\d{6,}$/, '');
+    // Convert hyphens to spaces, clean up colons
+    const name = slug
+      .replace(/-/g, ' ')
+      .replace(/:\s*/g, ': ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    // Title-case each word
+    return name
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ') || 'Unknown Product';
+  } catch {
+    return 'Unknown Product';
+  }
 }
 
 // ---- Startup ----
