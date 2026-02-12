@@ -1,6 +1,9 @@
 // ============================================================
 // Background Service Worker
 // Core monitoring loop, message routing, alarm management
+//
+// ALL product data is fetched via real browser tabs + content
+// script parsing (not fetch()) to bypass Cloudflare/bot blocks.
 // ============================================================
 
 import {
@@ -11,11 +14,11 @@ import {
 } from '../utils/storage.js';
 
 import {
-  isValidKmartUrl, fetchProductData,
+  isValidKmartUrl,
 } from '../utils/kmart-parser.js';
 
 import {
-  jitter, backoffDelay, buildHeaders, rotateUserAgent,
+  jitter, backoffDelay, rotateUserAgent,
   RateLimiter, startSessionRotation,
 } from '../utils/anti-detection.js';
 
@@ -43,6 +46,71 @@ chrome.runtime.onStartup.addListener(async () => {
   startSessionRotation();
   await ensureAlarmRunning();
 });
+
+// ---- Tab-based product data fetching ----
+// We open a real browser tab so the content script can parse
+// the live DOM. This bypasses Cloudflare / bot protection.
+
+/**
+ * Fetch product data by opening a background tab and asking
+ * the content script to parse the page.
+ * @param {string} url - The Kmart product URL
+ * @returns {Promise<object>} Parsed product data
+ */
+async function fetchProductViaTab(url) {
+  let tab = null;
+  try {
+    // Open the page in a background tab
+    tab = await chrome.tabs.create({ url, active: false });
+    await waitForTabLoad(tab.id);
+
+    // Extra wait for content script init + lazy-loaded content
+    await sleep(2500);
+
+    // Ask the content script to parse the live DOM
+    const response = await chrome.tabs.sendMessage(tab.id, {
+      type: 'PARSE_PRODUCT_PAGE',
+    });
+
+    if (response?.success && response.data) {
+      return response.data;
+    }
+
+    throw new Error(response?.error || 'Content script returned no data.');
+  } finally {
+    // Always close the tab when done
+    if (tab?.id) {
+      try { await chrome.tabs.remove(tab.id); } catch { /* already closed */ }
+    }
+  }
+}
+
+/**
+ * Try to get product data from an already-open tab first,
+ * falling back to opening a new background tab.
+ */
+async function fetchProductData(url) {
+  // Check if user already has this page open
+  const existing = await chrome.tabs.query({
+    url: url.replace(/\/$/, '') + '*',
+  });
+
+  if (existing.length > 0 && existing[0].id) {
+    try {
+      const response = await chrome.tabs.sendMessage(existing[0].id, {
+        type: 'PARSE_PRODUCT_PAGE',
+      });
+      if (response?.success && response.data) {
+        return response.data;
+      }
+    } catch {
+      // Content script may not be ready, fall through
+    }
+  }
+
+  // No existing tab — open one in the background
+  return await fetchProductViaTab(url);
+}
 
 // ---- Alarm-based monitoring ----
 
@@ -124,8 +192,7 @@ async function checkProduct(product, settings) {
   const now = Date.now();
 
   try {
-    const headers = buildHeaders('https://www.kmart.com.au/');
-    const data = await fetchProductData(product.url, headers);
+    const data = await fetchProductData(product.url);
 
     const oldStatus = product.stockStatus;
     const oldPrice = product.currentPrice;
@@ -136,7 +203,7 @@ async function checkProduct(product, settings) {
       timestamp: now,
       price: newPrice,
       stockStatus: newStatus,
-      variantsAvailable: data.variants.filter(v => v.available).map(v => v.value),
+      variantsAvailable: (data.variants || []).filter(v => v.available).map(v => v.value),
     };
 
     const history = [snapshot, ...product.history];
@@ -244,7 +311,7 @@ async function checkProduct(product, settings) {
 
 async function triggerAddToCart(product) {
   try {
-    const tabs = await chrome.tabs.query({ url: product.url });
+    const tabs = await chrome.tabs.query({ url: product.url + '*' });
     let tabId;
 
     if (tabs.length > 0 && tabs[0].id) {
@@ -253,6 +320,7 @@ async function triggerAddToCart(product) {
       const tab = await chrome.tabs.create({ url: product.url, active: false });
       tabId = tab.id;
       await waitForTabLoad(tabId);
+      await sleep(2000);
     }
 
     await chrome.tabs.sendMessage(tabId, {
@@ -282,14 +350,14 @@ function waitForTabLoad(tabId) {
     const listener = (id, info) => {
       if (id === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
-        setTimeout(resolve, 2000);
+        setTimeout(resolve, 1500);
       }
     };
     chrome.tabs.onUpdated.addListener(listener);
     setTimeout(() => {
       chrome.tabs.onUpdated.removeListener(listener);
       resolve();
-    }, 15000);
+    }, 20000);
   });
 }
 
@@ -312,7 +380,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-async function handleMessage(msg) {
+async function handleMessage(msg, sender) {
   switch (msg.type) {
     case 'GET_PRODUCTS':
       return { success: true, data: await getProducts() };
@@ -323,16 +391,15 @@ async function handleMessage(msg) {
         return { success: false, error: 'Invalid Kmart product URL.' };
       }
       try {
-        const headers = buildHeaders();
-        const data = await fetchProductData(url, headers);
+        const data = await fetchProductData(url);
         const product = {
           id: crypto.randomUUID(),
           url,
-          name: data.name,
-          imageUrl: data.imageUrl,
-          currentPrice: data.price,
+          name: data.name || 'Unknown Product',
+          imageUrl: data.imageUrl || '',
+          currentPrice: data.price || 0,
           previousPrice: null,
-          stockStatus: data.stockStatus,
+          stockStatus: data.stockStatus || 'unknown',
           monitorState: 'active',
           lastChecked: Date.now(),
           lastInStock: data.stockStatus === 'in_stock' ? Date.now() : null,
@@ -344,9 +411,9 @@ async function handleMessage(msg) {
           maxQuantity: 1,
           history: [{
             timestamp: Date.now(),
-            price: data.price,
-            stockStatus: data.stockStatus,
-            variantsAvailable: data.variants.filter(v => v.available).map(v => v.value),
+            price: data.price || 0,
+            stockStatus: data.stockStatus || 'unknown',
+            variantsAvailable: (data.variants || []).filter(v => v.available).map(v => v.value),
           }],
           tags: [],
         };
