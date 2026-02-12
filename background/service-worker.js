@@ -380,6 +380,7 @@ async function checkProduct(product, settings) {
       history,
       name: safeName,
       imageUrl: safeImage,
+      maxPurchaseQty: data.maxPurchaseQty ?? product.maxPurchaseQty ?? null,
     };
 
     // If product was in error state and we got valid data, restore to active
@@ -632,6 +633,7 @@ async function handleMessage(msg, sender) {
           selectedVariants: [],
           autoAddToCart: false,
           maxQuantity: 1,
+          maxPurchaseQty: data.maxPurchaseQty ?? null,
           history: [{
             timestamp: Date.now(),
             price: data.price || 0,

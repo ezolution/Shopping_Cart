@@ -45,6 +45,7 @@ export function parseProductPage(doc) {
     variants: [],
     productId: '',
     breadcrumb: [],
+    maxPurchaseQty: null,   // null = unknown/unlimited
   };
 
   // ---- Name ----
@@ -74,6 +75,9 @@ export function parseProductPage(doc) {
 
   // ---- Variants ----
   data.variants = parseVariants(doc);
+
+  // ---- Max purchase quantity ----
+  data.maxPurchaseQty = parseMaxQuantity(doc);
 
   // ---- Breadcrumb ----
   const crumbs = doc.querySelectorAll(
@@ -207,6 +211,65 @@ function parseVariants(doc) {
   }
 
   return variants;
+}
+
+/**
+ * Detect the maximum purchasable quantity from the product page.
+ * Checks: quantity input max attribute, "limit X per customer" text,
+ * quantity selector options, and JSON-LD inventory data.
+ * Returns a number or null if unknown/unlimited.
+ */
+function parseMaxQuantity(doc) {
+  // 1. Check quantity input field for max attribute
+  const qtyInput = doc.querySelector(
+    '[data-testid="quantity-input"] input, input[name="quantity"], .quantity-input input, input[type="number"][max]'
+  );
+  if (qtyInput) {
+    const max = parseInt(qtyInput.getAttribute('max'));
+    if (max > 0) return max;
+  }
+
+  // 2. Check quantity dropdown/select options (highest value)
+  const qtySelect = doc.querySelector(
+    'select[name="quantity"], [data-testid="quantity-select"], .quantity-selector select'
+  );
+  if (qtySelect) {
+    const options = Array.from(qtySelect.querySelectorAll('option'));
+    const values = options.map(o => parseInt(o.value)).filter(v => v > 0);
+    if (values.length > 0) return Math.max(...values);
+  }
+
+  // 3. Check for "limit X per customer/order" text on the page
+  const pageText = doc.body?.innerText ?? doc.body?.textContent ?? '';
+  const limitPatterns = [
+    /limit\s+(\d+)\s+per\s+(customer|order|person|transaction)/i,
+    /maximum\s+(\d+)\s+per\s+(customer|order|person|transaction)/i,
+    /max(?:imum)?\s+(?:qty|quantity)[\s:]+(\d+)/i,
+    /(\d+)\s+per\s+customer/i,
+    /purchase\s+limit[\s:]+(\d+)/i,
+    /restricted\s+to\s+(\d+)/i,
+  ];
+  for (const pattern of limitPatterns) {
+    const match = pageText.match(pattern);
+    if (match) {
+      const val = parseInt(match[1]);
+      if (val > 0 && val <= 999) return val;
+    }
+  }
+
+  // 4. Check JSON-LD for inventory/availability hints
+  const jsonLd = doc.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of jsonLd) {
+    try {
+      const json = JSON.parse(script.textContent ?? '');
+      const offer = json?.offers ?? json?.offers?.[0];
+      // Some sites expose inventoryLevel
+      const inv = offer?.inventoryLevel?.value;
+      if (typeof inv === 'number' && inv > 0) return inv;
+    } catch { /* continue */ }
+  }
+
+  return null; // Unknown — no limit detected
 }
 
 /**

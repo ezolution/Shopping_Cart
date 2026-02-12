@@ -99,6 +99,7 @@ function createProductCard(p) {
         <span class="product-price">$${p.currentPrice.toFixed(2)}</span>
         ${priceOld}
         <span class="product-status ${statusClass}">${statusLabel}</span>
+        ${p.maxPurchaseQty ? `<span class="product-limit">Max: ${p.maxPurchaseQty}</span>` : ''}
       </div>
       <div class="product-last-check">Checked ${lastChecked}</div>
     </div>

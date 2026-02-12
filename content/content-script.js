@@ -54,6 +54,7 @@
       variants: [],
       productId: '',
       breadcrumb: [],
+      maxPurchaseQty: null,
     };
 
     // Name
@@ -166,6 +167,41 @@
         if (json?.productID) { data.productId = String(json.productID); break; }
       } catch { /* skip */ }
     }
+
+    // Max purchase quantity
+    data.maxPurchaseQty = (() => {
+      // Quantity input max attribute
+      const qtyInput = doc.querySelector(
+        '[data-testid="quantity-input"] input, input[name="quantity"], .quantity-input input, input[type="number"][max]'
+      );
+      if (qtyInput) {
+        const max = parseInt(qtyInput.getAttribute('max'));
+        if (max > 0) return max;
+      }
+      // Quantity dropdown
+      const qtySelect = doc.querySelector(
+        'select[name="quantity"], [data-testid="quantity-select"], .quantity-selector select'
+      );
+      if (qtySelect) {
+        const values = Array.from(qtySelect.querySelectorAll('option'))
+          .map(o => parseInt(o.value)).filter(v => v > 0);
+        if (values.length > 0) return Math.max(...values);
+      }
+      // "Limit X per customer" text
+      const bodyText = doc.body?.innerText ?? '';
+      const limitPatterns = [
+        /limit\s+(\d+)\s+per\s+(customer|order|person|transaction)/i,
+        /maximum\s+(\d+)\s+per\s+(customer|order|person|transaction)/i,
+        /max(?:imum)?\s+(?:qty|quantity)[\s:]+(\d+)/i,
+        /(\d+)\s+per\s+customer/i,
+        /purchase\s+limit[\s:]+(\d+)/i,
+      ];
+      for (const pat of limitPatterns) {
+        const m = bodyText.match(pat);
+        if (m) { const v = parseInt(m[1]); if (v > 0 && v <= 999) return v; }
+      }
+      return null;
+    })();
 
     // Variants
     const sizeButtons = doc.querySelectorAll(
