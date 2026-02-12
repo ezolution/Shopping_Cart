@@ -320,7 +320,7 @@
   async function handleMessage(msg) {
     switch (msg.type) {
       case 'ADD_TO_CART':
-        return await performAddToCart(msg.payload.variants, msg.payload.quantity ?? 1);
+        return await performAddToCart(msg.payload.variants, msg.payload.quantity ?? 1, msg.payload.maxOut ?? false);
 
       case 'GO_TO_CHECKOUT':
         window.location.href = 'https://www.kmart.com.au/cart';
@@ -342,30 +342,121 @@
   // ADD TO CART
   // ================================================================
 
-  async function performAddToCart(variants = [], quantity = 1) {
+  async function performAddToCart(variants = [], quantity = 1, maxOut = false) {
     try {
+      // Select any requested variants (size, colour)
       for (const variant of variants) {
         await selectVariant(variant);
         await humanDelay(300, 700);
       }
 
-      if (quantity > 1) {
-        await setQuantity(quantity);
+      // Determine the quantity to add
+      let targetQty = quantity;
+
+      if (maxOut) {
+        // Read the actual max from the live page right now
+        const pageMax = detectPageMaxQuantity();
+        if (pageMax && pageMax > 0) {
+          targetQty = pageMax;
+        } else {
+          // No max detected on page — use a sensible default
+          // (some pages don't show a max until you try to exceed it)
+          targetQty = Math.max(quantity, 10);
+        }
+      }
+
+      if (targetQty > 1) {
+        await setQuantity(targetQty);
         await humanDelay(200, 500);
       }
 
       const addBtn = findAddToCartButton();
-      if (!addBtn) return { success: false, error: 'Add to Cart button not found.' };
+      if (!addBtn) return { success: false, error: 'Add to bag button not found.' };
       if (addBtn.disabled) return { success: false, error: 'Button disabled (likely out of stock).' };
 
       await humanDelay(100, 400);
       simulateClick(addBtn);
       await humanDelay(1000, 2000);
 
-      return { success: true };
+      // Check if an error message appeared after clicking (e.g. "max quantity exceeded")
+      const errorMsg = detectCartError();
+
+      return {
+        success: true,
+        quantityRequested: targetQty,
+        pageMax: maxOut ? detectPageMaxQuantity() : null,
+        warning: errorMsg || null,
+      };
     } catch (err) {
       return { success: false, error: err.message };
     }
+  }
+
+  /**
+   * Detect the maximum quantity allowed from the live page.
+   * Checks: input max attribute, select options, +/- button limits,
+   * and "limit per customer" text.
+   */
+  function detectPageMaxQuantity() {
+    // 1. Input field with max attribute
+    const qtyInput = document.querySelector(
+      '[data-testid="quantity-input"] input, input[name="quantity"], .quantity-input input, input[type="number"][max]'
+    );
+    if (qtyInput) {
+      const max = parseInt(qtyInput.getAttribute('max'));
+      if (max > 0) return max;
+    }
+
+    // 2. Quantity dropdown — highest option value
+    const qtySelect = document.querySelector(
+      'select[name="quantity"], [data-testid="quantity-select"], .quantity-selector select'
+    );
+    if (qtySelect) {
+      const values = Array.from(qtySelect.querySelectorAll('option'))
+        .map(o => parseInt(o.value)).filter(v => v > 0);
+      if (values.length > 0) return Math.max(...values);
+    }
+
+    // 3. Text on page: "Limit X per customer"
+    const bodyText = document.body?.innerText ?? '';
+    const patterns = [
+      /limit\s+(\d+)\s+per\s+(customer|order|person|transaction)/i,
+      /maximum\s+(\d+)\s+per\s+(customer|order|person|transaction)/i,
+      /max(?:imum)?\s+(?:qty|quantity)[\s:]+(\d+)/i,
+      /(\d+)\s+per\s+customer/i,
+      /purchase\s+limit[\s:]+(\d+)/i,
+    ];
+    for (const pat of patterns) {
+      const m = bodyText.match(pat);
+      if (m) {
+        const v = parseInt(m[1]);
+        if (v > 0 && v <= 999) return v;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Check for error/warning messages that may appear after clicking Add to Bag.
+   * e.g. "Maximum quantity reached", "Could not add to cart".
+   */
+  function detectCartError() {
+    const errorSelectors = [
+      '[data-testid="add-to-cart-error"]',
+      '[data-testid="cart-error"]',
+      '.cart-error-message',
+      '.add-to-cart-error',
+      '[class*="errorMessage"]',
+      '[role="alert"]',
+    ];
+    for (const sel of errorSelectors) {
+      const el = document.querySelector(sel);
+      if (el && el.textContent.trim().length > 0) {
+        return el.textContent.trim();
+      }
+    }
+    return null;
   }
 
   function findAddToCartButton() {
@@ -427,16 +518,28 @@
       '[data-testid="quantity-input"] input, input[name="quantity"], .quantity-input input'
     );
     if (qtyInput) {
-      qtyInput.value = String(qty);
+      // Use native setter to ensure React/framework picks it up
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set;
+      if (nativeSetter) {
+        nativeSetter.call(qtyInput, String(qty));
+      } else {
+        qtyInput.value = String(qty);
+      }
       qtyInput.dispatchEvent(new Event('input', { bubbles: true }));
       qtyInput.dispatchEvent(new Event('change', { bubbles: true }));
+      qtyInput.dispatchEvent(new Event('blur', { bubbles: true }));
       return;
     }
+
+    // Fallback: click the "+" button repeatedly
     const plusBtn = document.querySelector(
-      '[data-testid="quantity-increase"], button[aria-label*="increase"], .qty-plus'
+      '[data-testid="quantity-increase"], button[aria-label*="increase"], button[aria-label*="Increase"], .qty-plus'
     );
     if (plusBtn) {
       for (let i = 1; i < qty; i++) {
+        if (plusBtn.disabled) break; // Hit the max
         simulateClick(plusBtn);
         await humanDelay(150, 350);
       }

@@ -521,15 +521,26 @@ async function triggerAddToCart(product) {
           productId: product.id,
           variants: product.selectedVariants,
           quantity: product.maxQuantity,
+          maxOut: true,  // Always try to add the maximum allowed quantity
         },
       });
 
       if (response && response.success) {
+        const qtyInfo = response.quantityRequested
+          ? ` (qty: ${response.quantityRequested}${response.pageMax ? ', page max: ' + response.pageMax : ''})`
+          : '';
+        const warnInfo = response.warning ? ` [Warning: ${response.warning}]` : '';
+
         await addLog({
           timestamp: Date.now(), productId: product.id, event: 'add_to_cart',
-          details: `Auto add-to-bag succeeded for ${product.name}` +
+          details: `Auto add-to-bag succeeded for ${product.name}${qtyInfo}${warnInfo}` +
             (attempt > 1 ? ` (attempt ${attempt}/${ADD_CART_MAX_RETRIES})` : ''),
         });
+
+        // Update stored maxPurchaseQty if we learned it from the page
+        if (response.pageMax && response.pageMax > 0) {
+          await updateProduct(product.id, { maxPurchaseQty: response.pageMax });
+        }
         if (createdTab && tabId) {
           try { await chrome.tabs.remove(tabId); } catch { /* already closed */ }
         }
