@@ -100,12 +100,28 @@
     if (isInStoreOnly) {
       data.stockStatus = 'out_of_stock';
     } else {
-      // Check for an Add to Cart button (only present for online-purchasable items)
-      const addBtn =
-        doc.querySelector('[data-testid="add-to-cart-button"]') ??
-        doc.querySelector('button[class*="addToCart"]') ??
-        doc.querySelector('button[aria-label*="Add to"]') ??
-        doc.querySelector('.add-to-cart-button');
+      // Check for an Add to Cart / Add to Bag button
+      const addBtn = (() => {
+        const selectors = [
+          '[data-testid="add-to-cart-button"]',
+          '[data-testid="add-to-bag-button"]',
+          'button[class*="addToCart"]',
+          'button[class*="addToBag"]',
+          'button[aria-label*="Add to"]',
+          '.add-to-cart-button',
+          '.add-to-bag-button',
+        ];
+        for (const sel of selectors) {
+          const el = doc.querySelector(sel);
+          if (el) return el;
+        }
+        // Fallback: scan all buttons by text content
+        for (const btn of doc.querySelectorAll('button')) {
+          const txt = (btn.textContent ?? '').toLowerCase().trim();
+          if (txt.includes('add to cart') || txt.includes('add to bag')) return btn;
+        }
+        return null;
+      })();
 
       if (addBtn) {
         if (addBtn.disabled) {
@@ -116,7 +132,7 @@
           else if (txt.includes('add to')) data.stockStatus = 'in_stock';
         }
       } else {
-        // No Add to Cart button at all — likely not available online
+        // No Add to Cart/Bag button at all — likely not available online
         // Fall back to JSON-LD but only trust OutOfStock, not InStock
         let jsonStatus = 'unknown';
         for (const script of jsonLd) {
@@ -319,10 +335,14 @@
   function findAddToCartButton() {
     const selectors = [
       '[data-testid="add-to-cart-button"]',
+      '[data-testid="add-to-bag-button"]',
       'button[class*="addToCart"]',
+      'button[class*="addToBag"]',
       'button[aria-label*="Add to"]',
       'button[aria-label*="add to cart"]',
+      'button[aria-label*="add to bag"]',
       '.add-to-cart-button',
+      '.add-to-bag-button',
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);

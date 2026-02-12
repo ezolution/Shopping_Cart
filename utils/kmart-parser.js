@@ -127,12 +127,8 @@ function parseStockStatus(doc) {
 
   if (isInStoreOnly) return 'out_of_stock';
 
-  // Check for an Add to Cart button (only present for online-purchasable items)
-  const addBtn =
-    doc.querySelector('[data-testid="add-to-cart-button"]') ??
-    doc.querySelector('button[class*="addToCart"]') ??
-    doc.querySelector('button[aria-label*="Add to"]') ??
-    doc.querySelector('.add-to-cart-button');
+  // Check for an Add to Cart / Add to Bag button
+  const addBtn = findAddButton(doc);
 
   if (addBtn) {
     if (addBtn.disabled) return 'out_of_stock';
@@ -140,7 +136,7 @@ function parseStockStatus(doc) {
     if (text.includes('out of stock') || text.includes('unavailable')) return 'out_of_stock';
     if (text.includes('add to')) return 'in_stock';
   } else {
-    // No Add to Cart button — likely not available online
+    // No Add to Cart/Bag button — likely not available online
     // Only trust JSON-LD for OutOfStock, not InStock (which may mean in-store)
     const jsonLd = doc.querySelectorAll('script[type="application/ld+json"]');
     for (const script of jsonLd) {
@@ -150,7 +146,7 @@ function parseStockStatus(doc) {
         if (avail.includes('OutOfStock')) return 'out_of_stock';
       } catch { /* continue */ }
     }
-    return 'out_of_stock'; // No add-to-cart button = not purchasable online
+    return 'out_of_stock'; // No add button = not purchasable online
   }
 
   // Explicit OOS markers override everything
@@ -211,6 +207,33 @@ function parseVariants(doc) {
   }
 
   return variants;
+}
+
+/**
+ * Find the "Add to Cart" or "Add to Bag" button using selectors + text fallback.
+ * Kmart uses both wordings depending on the product/page version.
+ */
+function findAddButton(doc) {
+  // Try specific selectors first
+  const selectors = [
+    '[data-testid="add-to-cart-button"]',
+    '[data-testid="add-to-bag-button"]',
+    'button[class*="addToCart"]',
+    'button[class*="addToBag"]',
+    'button[aria-label*="Add to"]',
+    '.add-to-cart-button',
+    '.add-to-bag-button',
+  ];
+  for (const sel of selectors) {
+    const el = doc.querySelector(sel);
+    if (el) return el;
+  }
+  // Fallback: scan all buttons by text content
+  for (const btn of doc.querySelectorAll('button')) {
+    const txt = (btn.textContent ?? '').toLowerCase().trim();
+    if (txt.includes('add to cart') || txt.includes('add to bag')) return btn;
+  }
+  return null;
 }
 
 /**
