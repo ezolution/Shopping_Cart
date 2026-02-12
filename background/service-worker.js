@@ -485,40 +485,81 @@ async function checkProduct(product, settings) {
 
 // ---- Add-to-cart via content script ----
 
-async function triggerAddToCart(product) {
-  try {
-    const tabs = await chrome.tabs.query({ url: product.url + '*' });
-    let tabId;
+/**
+ * Trigger add-to-cart/bag with retry logic.
+ * Attempts up to 3 times with exponential backoff (3s, 6s, 12s).
+ */
+const ADD_CART_MAX_RETRIES = 3;
+const ADD_CART_BASE_DELAY = 3000;
 
-    if (tabs.length > 0 && tabs[0].id) {
-      tabId = tabs[0].id;
-    } else {
-      const tab = await chrome.tabs.create({ url: product.url, active: false });
-      tabId = tab.id;
-      await waitForTabLoad(tabId);
-      await sleep(2000);
+async function triggerAddToCart(product) {
+  let lastError = '';
+
+  for (let attempt = 1; attempt <= ADD_CART_MAX_RETRIES; attempt++) {
+    let tabId = null;
+    let createdTab = false;
+
+    try {
+      const tabs = await chrome.tabs.query({ url: product.url + '*' });
+
+      if (tabs.length > 0 && tabs[0].id) {
+        tabId = tabs[0].id;
+        await chrome.tabs.update(tabId, { url: product.url });
+        await waitForTabLoad(tabId);
+        await sleep(2000);
+      } else {
+        const tab = await chrome.tabs.create({ url: product.url, active: false });
+        tabId = tab.id;
+        createdTab = true;
+        await waitForTabLoad(tabId);
+        await sleep(2000);
+      }
+
+      const response = await chrome.tabs.sendMessage(tabId, {
+        type: 'ADD_TO_CART',
+        payload: {
+          productId: product.id,
+          variants: product.selectedVariants,
+          quantity: product.maxQuantity,
+        },
+      });
+
+      if (response && response.success) {
+        await addLog({
+          timestamp: Date.now(), productId: product.id, event: 'add_to_cart',
+          details: `Auto add-to-bag succeeded for ${product.name}` +
+            (attempt > 1 ? ` (attempt ${attempt}/${ADD_CART_MAX_RETRIES})` : ''),
+        });
+        if (createdTab && tabId) {
+          try { await chrome.tabs.remove(tabId); } catch { /* already closed */ }
+        }
+        return;
+      }
+
+      lastError = response?.error || 'Content script returned failure';
+      console.warn(`[KSM] Add-to-bag attempt ${attempt}/${ADD_CART_MAX_RETRIES} failed: ${lastError}`);
+
+    } catch (err) {
+      lastError = err?.message || String(err);
+      console.warn(`[KSM] Add-to-bag attempt ${attempt}/${ADD_CART_MAX_RETRIES} error: ${lastError}`);
     }
 
-    await chrome.tabs.sendMessage(tabId, {
-      type: 'ADD_TO_CART',
-      payload: {
-        productId: product.id,
-        variants: product.selectedVariants,
-        quantity: product.maxQuantity,
-      },
-    });
+    if (createdTab && tabId) {
+      try { await chrome.tabs.remove(tabId); } catch { /* ignore */ }
+    }
 
-    await addLog({
-      timestamp: Date.now(), productId: product.id, event: 'add_to_cart',
-      details: `Auto add-to-cart triggered for ${product.name}`,
-    });
-  } catch (err) {
-    console.error('[KSM] Auto add-to-cart failed:', err);
-    await addLog({
-      timestamp: Date.now(), productId: product.id, event: 'error',
-      details: `Add-to-cart failed: ${err.message}`,
-    });
+    if (attempt < ADD_CART_MAX_RETRIES) {
+      const delay = ADD_CART_BASE_DELAY * Math.pow(2, attempt - 1);
+      console.log(`[KSM] Retrying add-to-bag in ${delay / 1000}s...`);
+      await sleep(delay);
+    }
   }
+
+  console.error(`[KSM] Add-to-bag failed after ${ADD_CART_MAX_RETRIES} attempts: ${lastError}`);
+  await addLog({
+    timestamp: Date.now(), productId: product.id, event: 'error',
+    details: `Add-to-bag failed after ${ADD_CART_MAX_RETRIES} attempts: ${lastError}`,
+  });
 }
 
 function waitForTabLoad(tabId) {
@@ -645,6 +686,16 @@ async function handleMessage(msg, sender) {
         await addProduct(product);
         await ensureAlarmRunning();
         await refreshBadge();
+
+        // Auto add-to-bag immediately if product is already in stock
+        if (product.stockStatus === 'in_stock') {
+          const settings = await getSettings();
+          if (settings.globalAutoAdd) {
+            // Don't await — run in background so ADD_PRODUCT returns fast
+            triggerAddToCart(product).catch(() => {});
+          }
+        }
+
         return { success: true, data: product };
       } catch (err) {
         return { success: false, error: `Failed to add product: ${err.message}` };
