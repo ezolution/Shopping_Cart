@@ -247,12 +247,15 @@ async function monitorTick() {
  * (not a 404, error page, or unrelated content).
  */
 function isValidProductData(data) {
-  if (!data || !data.name) return false;
+  if (!data) return false;
 
-  const name = data.name.toLowerCase();
+  // ---- Signal 1: No name at all ----
+  if (!data.name || data.name.trim().length < 3) return false;
 
-  // Common 404 / error page titles
-  const junkNames = [
+  const name = data.name.toLowerCase().trim();
+
+  // ---- Signal 2: Name matches known junk patterns ----
+  const junkPhrases = [
     'page not found',
     'not found',
     '404',
@@ -261,14 +264,36 @@ function isValidProductData(data) {
     'oops',
     'something went wrong',
     'access denied',
-    'just a moment',     // Cloudflare challenge
+    'just a moment',       // Cloudflare challenge
     'unknown product',
+    'can\'t be found',
+    'cannot be found',
+    'no longer available',
+    'doesn\'t exist',
+    'does not exist',
+    'unavailable',
+    'we couldn\'t find',
+    'we could not find',
+    'kmart australia',     // Generic page title with no product
+    'attention required',  // Bot challenge
+    'please verify',
+    'checking your browser',
   ];
+  if (junkPhrases.some(j => name.includes(j))) return false;
 
-  if (junkNames.some(j => name.includes(j))) return false;
+  // ---- Signal 3: No price AND no image → almost certainly not a product ----
+  const hasPrice = typeof data.price === 'number' && data.price > 0;
+  const hasImage = typeof data.imageUrl === 'string' && data.imageUrl.length > 10;
+  if (!hasPrice && !hasImage) return false;
 
-  // If name is very short or very generic, suspicious
-  if (data.name.trim().length < 3) return false;
+  // ---- Signal 4: Name looks like a full sentence, not a product title ----
+  // Real product names rarely contain 8+ words of filler. Sentence-like names
+  // with common filler words are suspicious (e.g. "Sorry, the page you're
+  // looking for can't be found").
+  const wordCount = name.split(/\s+/).length;
+  const fillerWords = ['the', 'you', 'your', 'this', 'that', 'for', 'are', 'was', 'were', 'our', 'please'];
+  const fillerCount = name.split(/\s+/).filter(w => fillerWords.includes(w)).length;
+  if (wordCount >= 6 && fillerCount >= 3) return false;
 
   return true;
 }
@@ -288,11 +313,19 @@ async function checkProduct(product, settings) {
       const errorMsg = `Page returned invalid data (possible 404 or taken down): "${data?.name || 'empty'}"`;
       console.warn(`[KSM] ${product.name}: ${errorMsg}`);
 
+      // If the stored name itself is junk (e.g. added before validation was fixed),
+      // repair it now using the URL-extracted name
+      const nameFix = {};
+      if (!isValidProductData({ name: product.name, price: product.currentPrice, imageUrl: product.imageUrl })) {
+        nameFix.name = nameFromUrl(product.url);
+      }
+
       await updateProduct(product.id, {
         lastChecked: now,
         errorCount: product.errorCount + 1,
         lastError: errorMsg,
-        // Keep existing name, image, price, stockStatus untouched
+        ...nameFix,
+        // Keep existing price, stockStatus, imageUrl untouched
       });
 
       await addLog({
